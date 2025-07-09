@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - FUSER Customs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        html { background: linear-gradient(to bottom, #0f0f23 0%, #1a0d2e 50%, #2d1b3d 100%); min-height: 100vh; }
+        .admin-input, .admin-select, .admin-textarea {
+            background: rgba(30, 27, 58, 0.8); border: 1px solid rgba(139, 92, 246, 0.3); color: #ffffff;
+            border-radius: 8px; backdrop-filter: blur(10px);
+        }
+        .admin-input:focus, .admin-select:focus, .admin-textarea:focus { outline: none; border-color: rgba(139, 92, 246, 0.6); box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1); }
+        .admin-button {
+            background-color: rgba(139, 92, 246, 0.8); color: #ffffff; font-weight: 500;
+            border-radius: 8px; cursor: pointer; transition: all 0.2s ease;
+        }
+        .admin-button:hover { background-color: rgba(139, 92, 246, 1); }
+        .sortable-ghost { background: rgba(139, 92, 246, 0.2); border: 1px dashed rgba(139, 92, 246, 0.5); }
+        .handle { cursor: move; }
+
+        #track-selection-container, #playlist-tracks-list { scrollbar-color: #5b21b6 #1e1b3a; scrollbar-width: thin; }
+        #track-selection-container::-webkit-scrollbar, #playlist-tracks-list::-webkit-scrollbar { width: 8px; }
+        #track-selection-container::-webkit-scrollbar-track, #playlist-tracks-list::-webkit-scrollbar-track { background: #1e1b3a; border-radius: 4px; }
+        #track-selection-container::-webkit-scrollbar-thumb, #playlist-tracks-list::-webkit-scrollbar-thumb { background-color: #5b21b6; border-radius: 4px; border: 2px solid #1e1b3a; }
+        #track-selection-container::-webkit-scrollbar-thumb:hover, #playlist-tracks-list::-webkit-scrollbar-thumb:hover { background-color: #7c3aed; }
+    </style>
+</head>
+<body class="text-white">
+
+    <div class="w-full max-w-screen-xl mx-auto p-6 lg:p-8">
+        <header class="flex items-center justify-between mb-8 flex-wrap gap-4">
+            <h1 class="text-4xl font-bold text-purple-300">Admin Panel</h1>
+            <a href="./index.html" class="admin-button px-4 py-2">&larr; Back to FUSER Customs</a>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-1 bg-black/30 p-6 rounded-lg">
+                <h2 class="text-2xl font-bold mb-4 text-purple-200">Homepage Slider Order</h2>
+                <p class="text-sm text-purple-400 mb-4">Drag to reorder. Default sliders cannot be removed.</p>
+                <div id="slider-order-list" class="space-y-2"></div>
+                <button id="saveOrderBtn" class="admin-button w-full py-2 mt-6">Save Order</button>
+            </div>
+
+            <div class="lg:col-span-2 bg-black/30 p-6 rounded-lg">
+                <h2 class="text-2xl font-bold mb-4 text-purple-200">Manage Playlists</h2>
+                <p class="text-sm text-purple-400 mb-4">Use the "Show/Hide" toggle to control which playlists appear in the "Playlists" slider on the homepage.</p>
+                <div id="custom-lists-container"></div>
+                <button id="add-new-list-btn" class="admin-button w-full py-2 mt-6">+ Add New Playlist</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="edit-modal" class="fixed inset-0 bg-black bg-opacity-80 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-gradient-to-br from-[#1a0d2e] to-[#0f0f23] border border-purple-800/50 w-full max-w-5xl max-h-[90vh] rounded-xl shadow-2xl flex flex-col">
+            
+            <header class="p-6 border-b border-purple-900/50">
+                <h3 id="modal-title" class="text-2xl font-bold text-purple-200">Edit Playlist</h3>
+            </header>
+            
+             <main class="p-6 flex-grow overflow-y-auto">
+                <div class="space-y-4">
+                    <div>
+                        <label for="list-name-input" class="block text-sm font-medium text-purple-300 mb-2">Playlist Title</label>
+                        <input type="hidden" id="list-id-input">
+                        <input type="text" id="list-name-input" class="admin-input w-full p-3 text-base" placeholder="e.g., Rock Anthems, Summer Vibes...">
+                    </div>
+                     <div>
+                        <label for="list-thumbnail-input" class="block text-sm font-medium text-purple-300 mb-2">Playlist Thumbnail URL (Optional)</label>
+                        <input type="text" id="list-thumbnail-input" class="admin-input w-full p-3 text-base" placeholder="https://example.com/image.png">
+                    </div>
+                    <div>
+                        <label for="list-description-input" class="block text-sm font-medium text-purple-300 mb-2">Playlist Description (Optional)</label>
+                        <textarea id="list-description-input" class="admin-textarea w-full p-3 text-base" rows="3" placeholder="A short description of what makes this playlist special..."></textarea>
+                    </div>
+                    
+                    <div>
+                        <label for="track-search-input" class="block text-sm font-medium text-purple-300 mb-2">Find Tracks</label>
+                        <input type="text" id="track-search-input" class="admin-input w-full p-3 text-base" placeholder="Search available tracks by title or artist...">
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+                        <div>
+                            <h4 class="text-sm font-medium text-purple-300 mb-2">Available Tracks</h4>
+                            <div id="track-selection-container" class="overflow-y-auto bg-black/20 rounded-lg p-2" style="height: 45vh;">
+                                <div id="track-selection-list" class="space-y-1"></div>
+                                <div id="loading-indicator" class="text-center p-4 text-purple-400 hidden">Loading...</div>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-medium text-purple-300 mb-2">Tracks in Playlist (<span id="playlist-track-count">0</span>)</h4>
+                            <div id="playlist-tracks-list" class="overflow-y-auto bg-black/20 rounded-lg p-2 space-y-1" style="height: 45vh;">
+                                </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <footer class="p-6 border-t border-purple-900/50 flex justify-between items-center bg-black/20 rounded-b-xl">
+                <div>
+                     <button id="deleteListBtn" class="px-4 py-2 rounded-md font-semibold text-white bg-rose-600 hover:bg-rose-500 transition-colors duration-200">Delete Playlist</button>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button id="cancel-edit-btn" class="px-4 py-2 rounded-md font-semibold text-purple-300 bg-transparent border border-slate-600 hover:bg-slate-700 hover:text-white transition-colors duration-200">Cancel</button>
+                    <button id="save-list-btn" class="px-6 py-2 rounded-md font-semibold text-white bg-violet-600 hover:bg-violet-500 transition-colors duration-200 shadow-[0_0_15px_rgba(139,92,246,0.4)]">Save</button>
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Main UI Elements
+            const sliderOrderList = document.getElementById('slider-order-list');
+            const customListsContainer = document.getElementById('custom-lists-container');
+            const saveOrderBtn = document.getElementById('saveOrderBtn');
+            const addNewListBtn = document.getElementById('add-new-list-btn');
+            
+            // Modal Elements
+            const editModal = document.getElementById('edit-modal');
+            const modalTitle = document.getElementById('modal-title');
+            const modalMain = editModal.querySelector('main');
+            const listIdInput = document.getElementById('list-id-input');
+            const listNameInput = document.getElementById('list-name-input');
+            const listThumbnailInput = document.getElementById('list-thumbnail-input');
+            const listDescriptionInput = document.getElementById('list-description-input');
+            const trackSearchInput = document.getElementById('track-search-input');
+            const trackSelectionContainer = document.getElementById('track-selection-container');
+            const trackSelectionList = document.getElementById('track-selection-list');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            const playlistTracksList = document.getElementById('playlist-tracks-list');
+            const playlistTrackCount = document.getElementById('playlist-track-count');
+            const cancelEditBtn = document.getElementById('cancel-edit-btn');
+            const saveListBtn = document.getElementById('save-list-btn');
+            const deleteListBtn = document.getElementById('deleteListBtn');
+            
+            // State
+            let allSongs = [];
+            let sliderOrder = [];
+            let customLists = [];
+            let searchDebounceTimeout;
+            let currentSelectedKeys = new Set();
+            let availableTracksCurrentPage = 1;
+            let isLoadingMore = false;
+            let canLoadMore = false;
+            const TRACKS_PER_PAGE = 100;
+
+            const defaultSliders = [
+                { id: 'new', name: 'New Releases', locked: true },
+                { id: 'genre', name: 'Browse by Genre', locked: true },
+                { id: 'decade', name: 'Browse by Decade', locked: true },
+                { id: 'all', name: 'All Releases', locked: true }
+            ];
+            const playlistsSlider = { id: 'playlists', name: 'Playlists', locked: true };
+
+            const spreadsheets = ['1851575492','235307462','414722245','750706241','287284858','550268456','634548400','773245346','1445765245','711638697','611111517','2039683256','411904845','821834398','1463640242','1384804760','515312674','635441077','1940687312','1875804149'];
+            const baseUrl = 'https://docs.google.com/spreadsheets/d/1qvUufWtUW0iEm9jPYS2FpmWVx88sL9gqeniJ5x8vDd8/export?format=csv&gid=';
+
+            const getSongKey = (song) => `${(song[3] || '').trim()}-${(song[4] || '').trim()}`.toLowerCase();
+
+            async function loadAllSongs() {
+                const cacheKey = 'fuserSongsCache';
+                const cacheTimestampKey = 'fuserSongsCacheTimestamp';
+                const cachedData = localStorage.getItem(cacheKey);
+                const cacheTimestamp = localStorage.getItem(cacheTimestampKey);
+                const oneDay = 24 * 60 * 60 * 1000;
+
+                if (cachedData && cacheTimestamp && (Date.now() - cacheTimestamp < oneDay)) {
+                    console.log("Loading songs from cache.");
+                    allSongs = JSON.parse(cachedData);
+                    return;
+                }
+                
+                console.log("Fetching songs from Google Sheets...");
+                const promises = spreadsheets.map(gid => new Promise((res, rej) => {
+                    Papa.parse(baseUrl + gid, {
+                        download: true,
+                        header: false,
+                        skipEmptyLines: true,
+                        complete: r => res(r.data.slice(8)),
+                        error: e => rej(e)
+                    });
+                }));
+                
+                try {
+                    const results = await Promise.all(promises);
+                    allSongs = results.flat().sort((a,b) => (a[4] || '').localeCompare(b[4]));
+                    localStorage.setItem(cacheKey, JSON.stringify(allSongs));
+                    localStorage.setItem(cacheTimestampKey, Date.now());
+                } catch (error) {
+                    console.error("Failed to fetch song data:", error);
+                    alert("Could not load song data. Please check the console and try again later.");
+                }
+            }
+
+            function loadFromStorage() {
+                sliderOrder = JSON.parse(localStorage.getItem('fuserSliderOrder')) || [...defaultSliders];
+                customLists = JSON.parse(localStorage.getItem('fuserCustomLists')) || [];
+            }
+            
+            function saveToStorage() {
+                localStorage.setItem('fuserSliderOrder', JSON.stringify(sliderOrder));
+                localStorage.setItem('fuserCustomLists', JSON.stringify(customLists));
+            }
+
+            function renderSliderOrder() {
+                sliderOrderList.innerHTML = '';
+                const hasVisiblePlaylists = sliderOrder.some(item => item.id.startsWith('custom_'));
+                let visualOrder = [...sliderOrder];
+
+                if (hasVisiblePlaylists) {
+                    const firstCustomIndex = visualOrder.findIndex(item => item.id.startsWith('custom_'));
+                    visualOrder = visualOrder.filter(item => !item.id.startsWith('custom_'));
+                    if (firstCustomIndex !== -1) {
+                        visualOrder.splice(firstCustomIndex, 0, playlistsSlider);
+                    } else {
+                        visualOrder.push(playlistsSlider);
+                    }
+                }
+                
+                if (visualOrder.length === 0) {
+                     sliderOrderList.innerHTML = `<p class="text-purple-400 text-center py-4 text-sm">No sliders are visible.</p>`;
+                }
+
+                visualOrder.forEach(item => {
+                    const div = document.createElement('div');
+                    div.dataset.id = item.id;
+                    div.className = 'p-3 bg-slate-800/50 rounded flex items-center justify-between';
+                    
+                    div.innerHTML = `
+                        <div class="flex items-center flex-grow overflow-hidden">
+                            <span class="handle mr-2 text-slate-400">☰</span>
+                            <span class="truncate">${item.name}</span>
+                            ${item.locked ? '<span class="text-xs text-purple-400 ml-2 flex-shrink-0">(Default)</span>' : ''}
+                        </div>
+                    `;
+                    sliderOrderList.appendChild(div);
+                });
+            }
+            
+            function renderCustomLists() {
+                customListsContainer.innerHTML = '';
+                if(customLists.length === 0) {
+                    customListsContainer.innerHTML = `<p class="text-purple-400 text-center py-8">No playlists created yet.</p>`;
+                    return;
+                }
+                customLists.forEach(list => {
+                    const div = document.createElement('div');
+                    div.className = 'p-4 bg-slate-800/50 rounded flex items-center justify-between mb-2 gap-4';
+                    
+                    const isInSlider = sliderOrder.some(s => s.id === list.id);
+                    const toggleButtonHTML = isInSlider
+                        ? `<button class="toggle-slider-btn admin-button bg-amber-600/80 hover:bg-amber-600 px-3 py-1 text-sm" data-id="${list.id}" data-action="hide">Hide</button>`
+                        : `<button class="toggle-slider-btn admin-button bg-teal-600/80 hover:bg-teal-600 px-3 py-1 text-sm" data-id="${list.id}" data-action="add">Show</button>`;
+
+                    div.innerHTML = `
+                        <div class="flex items-center gap-4 flex-grow overflow-hidden">
+                            ${list.thumbnail ? `<img src="${list.thumbnail}" class="w-16 h-16 rounded-md object-cover flex-shrink-0">` : `<div class="w-16 h-16 rounded-md bg-slate-700/50 flex-shrink-0 flex items-center justify-center text-purple-400"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></div>`}
+                            <div class="flex-grow overflow-hidden pr-4">
+                                <p class="font-semibold truncate">${list.name}</p>
+                                <p class="text-sm text-purple-400">${list.songKeys.length} tracks</p>
+                                ${list.description ? `<p class="text-xs text-slate-400 truncate mt-1">${list.description}</p>` : ''}
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 flex-shrink-0">
+                            ${toggleButtonHTML}
+                            <button class="edit-list-btn admin-button px-3 py-1 text-sm" data-id="${list.id}">Edit</button>
+                        </div>
+                    `;
+                    customListsContainer.appendChild(div);
+                });
+            }
+            
+            const getCompletionIcon = (songRow) => {
+                const creator = songRow[5] || 'N/A';
+                const hasFeature = i => (songRow[i] || '').trim() === '✖';
+                if (creator === 'Harmonix') {
+                    return `<img src="/imgs/official.png" class="h-8 w-8 flex-shrink-0" alt="Official Track" title="Official Harmonix Track">`;
+                }
+                if (hasFeature(26) && hasFeature(27) && hasFeature(29) && hasFeature(25) && hasFeature(24)) {
+                    return `<img src="/imgs/complete.png" class="h-8 w-8 flex-shrink-0" alt="Complete Track" title="All features available">`;
+                }
+                return '<div class="h-8 w-8 flex-shrink-0"></div>';
+            };
+
+            function getSongItemHTML(song, type) {
+                const key = getSongKey(song);
+                const creator = song[5] || 'N/A';
+                const completionIconHTML = getCompletionIcon(song);
+                const buttonHTML = type === 'add'
+                    ? `<button data-key="${key}" class="add-track-btn text-xs bg-violet-600 hover:bg-violet-500 text-white font-semibold py-1 px-3 rounded-full transition-colors">Add</button>`
+                    : `<button data-key="${key}" class="remove-track-btn text-xs bg-rose-600 hover:bg-rose-500 text-white font-semibold py-1 px-3 rounded-full transition-colors">Remove</button>`;
+
+                return `
+                    <div class="flex items-center gap-3 p-2 rounded-md hover:bg-purple-500/10" data-song-key="${key}">
+                        <div class="flex-grow">
+                            <span class="text-white">${song[4] || 'Untitled'}</span>
+                            <span class="text-sm text-purple-400 block">${song[3] || 'Unknown Artist'} • by ${creator}</span>
+                        </div>
+                        ${completionIconHTML}
+                        <div class="w-16 text-right flex-shrink-0">${buttonHTML}</div>
+                    </div>
+                `;
+            }
+
+            function renderAvailableTracks(append = false) {
+                isLoadingMore = true; // Set loading state
+                loadingIndicator.classList.remove('hidden');
+
+                // Use a short timeout to allow the UI to update and show the loading indicator
+                setTimeout(() => {
+                    const searchTerm = trackSearchInput.value.toLowerCase();
+                    const filteredSongs = allSongs.filter(song => {
+                        if (currentSelectedKeys.has(getSongKey(song))) return false;
+                        if (!searchTerm) return true;
+                        const title = (song[4] || '').toLowerCase();
+                        const artist = (song[3] || '').toLowerCase();
+                        return title.includes(searchTerm) || artist.includes(searchTerm);
+                    });
+
+                    if (!append) {
+                        trackSelectionList.innerHTML = '';
+                        availableTracksCurrentPage = 1;
+                        trackSelectionContainer.scrollTop = 0; // Reset scroll on new search
+                    }
+                    
+                    const startIndex = (availableTracksCurrentPage - 1) * TRACKS_PER_PAGE;
+                    const endIndex = startIndex + TRACKS_PER_PAGE;
+                    const songsToRender = filteredSongs.slice(startIndex, endIndex);
+
+                    trackSelectionList.insertAdjacentHTML('beforeend', songsToRender.map(song => getSongItemHTML(song, 'add')).join(''));
+
+                    canLoadMore = endIndex < filteredSongs.length;
+                    
+                    if (trackSelectionList.innerHTML === '') {
+                        trackSelectionList.innerHTML = `<div class="text-center text-slate-400 p-8">${searchTerm ? 'No tracks match your search.' : 'All tracks have been added.'}</div>`;
+                    }
+                    
+                    loadingIndicator.classList.add('hidden');
+                    isLoadingMore = false; // Unset loading state
+                }, 10); 
+            }
+
+            function renderPlaylistTracks() {
+                const songMap = new Map(allSongs.map(song => [getSongKey(song), song]));
+                const playlistSongs = Array.from(currentSelectedKeys).map(key => songMap.get(key)).filter(Boolean);
+
+                if (playlistSongs.length === 0) {
+                    playlistTracksList.innerHTML = `<div class="text-center text-slate-400 p-8">Add tracks from the left.</div>`;
+                } else {
+                     playlistTracksList.innerHTML = playlistSongs.map(song => getSongItemHTML(song, 'remove')).join('');
+                }
+                playlistTrackCount.textContent = playlistSongs.length;
+            }
+
+            function handleAddNewList() {
+                currentSelectedKeys.clear();
+                listIdInput.value = `custom_${Date.now()}`;
+                listNameInput.value = '';
+                listThumbnailInput.value = '';
+                listDescriptionInput.value = '';
+                trackSearchInput.value = '';
+                modalTitle.textContent = "Add New Playlist";
+                deleteListBtn.style.display = 'none';
+                
+                renderAvailableTracks();
+                renderPlaylistTracks();
+                
+                editModal.classList.remove('hidden');
+                listNameInput.focus();
+            }
+            
+            function handleEditList(e) {
+                const listId = e.target.dataset.id;
+                const list = customLists.find(l => l.id === listId);
+                if (list) {
+                    currentSelectedKeys = new Set(list.songKeys);
+                    listIdInput.value = list.id;
+                    listNameInput.value = list.name;
+                    listThumbnailInput.value = list.thumbnail || '';
+                    listDescriptionInput.value = list.description || '';
+                    trackSearchInput.value = '';
+                    modalTitle.textContent = "Edit Playlist";
+                    deleteListBtn.style.display = 'block';
+
+                    renderAvailableTracks();
+                    renderPlaylistTracks();
+                    
+                    editModal.classList.remove('hidden');
+                    listNameInput.focus();
+                }
+            }
+
+            function handleSaveList() {
+                const id = listIdInput.value;
+                const name = listNameInput.value.trim();
+                const thumbnail = listThumbnailInput.value.trim();
+                const description = listDescriptionInput.value.trim();
+
+                if (!name) {
+                    alert('Please enter a name for the playlist.');
+                    return;
+                }
+                const songKeys = Array.from(currentSelectedKeys);
+                
+                const existingListIndex = customLists.findIndex(l => l.id === id);
+                const newListData = { id, name, thumbnail, description, songKeys };
+
+                if (existingListIndex > -1) {
+                    customLists[existingListIndex] = newListData;
+                } else {
+                    customLists.push(newListData);
+                }
+
+                saveToStorage();
+                renderAll();
+                editModal.classList.add('hidden');
+            }
+            
+            function handleDeleteList() {
+                if(!confirm('Are you sure you want to delete this playlist? This cannot be undone.')) return;
+
+                const id = listIdInput.value;
+                customLists = customLists.filter(l => l.id !== id);
+                sliderOrder = sliderOrder.filter(o => o.id !== id);
+                
+                saveToStorage();
+                renderAll();
+                editModal.classList.add('hidden');
+            }
+            
+            function handleSaveOrder() {
+                 const newVisualOrderIds = Array.from(sliderOrderList.children).map(item => item.dataset.id);
+                 let shownCustomPlaylists = sliderOrder.filter(item => item.id.startsWith('custom_'));
+
+                 const finalOrder = [];
+                 newVisualOrderIds.forEach(id => {
+                     if(id === 'playlists') {
+                         finalOrder.push(...shownCustomPlaylists);
+                     } else {
+                         const item = defaultSliders.find(d => d.id === id);
+                         if(item) finalOrder.push(item);
+                     }
+                 });
+
+                 sliderOrder = finalOrder;
+                 saveToStorage();
+                 alert('Order saved!');
+                 renderAll();
+            }
+
+            function renderAll() {
+                renderSliderOrder();
+                renderCustomLists();
+            }
+
+            async function initializeAdmin() {
+                await loadAllSongs();
+                loadFromStorage();
+                renderAll();
+
+                new Sortable(sliderOrderList, {
+                    animation: 150,
+                    handle: '.handle',
+                    ghostClass: 'sortable-ghost'
+                });
+                
+                saveOrderBtn.addEventListener('click', handleSaveOrder);
+                addNewListBtn.addEventListener('click', handleAddNewList);
+                cancelEditBtn.addEventListener('click', () => editModal.classList.add('hidden'));
+                saveListBtn.addEventListener('click', handleSaveList);
+                deleteListBtn.addEventListener('click', handleDeleteList);
+                
+                trackSelectionContainer.addEventListener('scroll', () => {
+                    if (isLoadingMore || !canLoadMore) return;
+
+                    // Trigger load when user is 100px from the bottom
+                    if (trackSelectionContainer.scrollTop + trackSelectionContainer.clientHeight >= trackSelectionContainer.scrollHeight - 100) {
+                        availableTracksCurrentPage++;
+                        renderAvailableTracks(true);
+                    }
+                });
+
+                customListsContainer.addEventListener('click', e => {
+                    const btn = e.target.closest('.toggle-slider-btn, .edit-list-btn');
+                    if (!btn) return;
+
+                    const listId = btn.dataset.id;
+
+                    if (btn.classList.contains('toggle-slider-btn')) {
+                        const action = btn.dataset.action;
+                        const list = customLists.find(l => l.id === listId);
+                        if (!list) return;
+
+                        const isCurrentlyInOrder = sliderOrder.some(s => s.id === listId);
+
+                        if (action === 'add' && !isCurrentlyInOrder) {
+                            sliderOrder.push({ id: list.id, name: list.name });
+                        } else if (action === 'hide') {
+                            sliderOrder = sliderOrder.filter(s => s.id !== listId);
+                        }
+                        saveToStorage();
+                        renderAll();
+                    } else if (btn.classList.contains('edit-list-btn')) {
+                        handleEditList({ target: btn });
+                    }
+                });
+                
+                trackSearchInput.addEventListener('input', () => {
+                    clearTimeout(searchDebounceTimeout);
+                    searchDebounceTimeout = setTimeout(() => {
+                        renderAvailableTracks(); // Rerender from page 1 on search
+                    }, 300);
+                });
+
+                modalMain.addEventListener('click', (e) => {
+                    const addBtn = e.target.closest('.add-track-btn');
+                    const removeBtn = e.target.closest('.remove-track-btn');
+                    const songItem = e.target.closest('[data-song-key]');
+                    if(!songItem) return;
+
+                    const key = songItem.dataset.songKey;
+                    
+                    if (addBtn) {
+                        currentSelectedKeys.add(key);
+                        songItem.remove(); // Remove from available list
+                        renderPlaylistTracks(); // Add to playlist list
+                    } else if (removeBtn) {
+                        currentSelectedKeys.delete(key);
+                        renderPlaylistTracks(); // This will remove it from the display
+                        renderAvailableTracks(); // This will make it reappear in the available list
+                    }
+                });
+            }
+
+            initializeAdmin();
+        });
+    </script>
+</body>
+</html>
